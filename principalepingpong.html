@@ -1,0 +1,383 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PONG — Multijoueur</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Orbitron:wght@400;700;900&display=swap');
+:root {
+  --bg: #020408; --court: #030b12;
+  --neon: #00f5ff; --neon2: #ff006e;
+  --glow: 0 0 10px #00f5ff, 0 0 20px #00f5ff, 0 0 40px #00f5ff;
+  --glow2: 0 0 10px #ff006e, 0 0 20px #ff006e, 0 0 40px #ff006e;
+}
+* { margin:0; padding:0; box-sizing:border-box; }
+body {
+  background: var(--bg);
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  min-height: 100vh;
+  font-family: 'Orbitron', monospace;
+  color: #e8f4f8; overflow: hidden; user-select: none;
+}
+body::before {
+  content:''; position:fixed; inset:0;
+  background:
+    repeating-linear-gradient(0deg,transparent,transparent 40px,rgba(0,245,255,.015) 40px,rgba(0,245,255,.015) 41px),
+    repeating-linear-gradient(90deg,transparent,transparent 40px,rgba(0,245,255,.015) 40px,rgba(0,245,255,.015) 41px);
+  pointer-events:none; z-index:0;
+}
+
+/* ── Screens ── */
+.screen { position:relative; z-index:1; display:flex; flex-direction:column; align-items:center; gap:20px; }
+.screen.hidden { display:none !important; }
+
+/* ── Logo ── */
+.logo { font-size:clamp(2.2rem,5vw,3.8rem); font-weight:900; letter-spacing:.5em; color:var(--neon); text-shadow:var(--glow); }
+.sub  { font-family:'Share Tech Mono',monospace; font-size:.85rem; color:rgba(255,255,255,.35); letter-spacing:.2em; }
+
+/* ── Join form ── */
+#join-screen { gap:28px; }
+.input-wrap { display:flex; flex-direction:column; gap:8px; align-items:center; }
+.input-wrap label { font-size:.7rem; letter-spacing:.25em; color:rgba(255,255,255,.35); }
+#name-input {
+  background:transparent; border:none; border-bottom:2px solid rgba(0,245,255,.4);
+  color:var(--neon); font-family:'Orbitron',monospace; font-size:1.4rem; font-weight:700;
+  text-align:center; width:260px; padding:8px 0; letter-spacing:.15em; outline:none;
+  text-shadow:0 0 8px rgba(0,245,255,.5);
+  transition:border-color .2s;
+}
+#name-input:focus { border-color:var(--neon); }
+#name-input::placeholder { color:rgba(0,245,255,.2); font-weight:400; font-size:1rem; }
+
+.btn {
+  padding:14px 52px; background:transparent;
+  border:2px solid var(--neon); color:var(--neon);
+  font-family:'Orbitron',monospace; font-size:.9rem; font-weight:700;
+  letter-spacing:.25em; cursor:pointer; text-transform:uppercase;
+  box-shadow:var(--glow), inset 0 0 20px rgba(0,245,255,.05);
+  transition:all .2s;
+}
+.btn:hover { background:rgba(0,245,255,.1); box-shadow:0 0 20px #00f5ff,0 0 50px #00f5ff; }
+.btn:disabled { opacity:.35; cursor:default; pointer-events:none; }
+.btn.pink { border-color:var(--neon2); color:var(--neon2); box-shadow:var(--glow2),inset 0 0 20px rgba(255,0,110,.05); }
+.btn.pink:hover { background:rgba(255,0,110,.1); box-shadow:0 0 20px #ff006e,0 0 50px #ff006e; }
+
+/* ── Lobby ── */
+#lobby-screen { gap:24px; }
+.lobby-status {
+  font-size:.8rem; letter-spacing:.2em; color:rgba(255,255,255,.4);
+  font-family:'Share Tech Mono',monospace;
+}
+.waiting-anim { display:inline-block; animation:blink 1s steps(1) infinite; }
+@keyframes blink { 50%{opacity:0} }
+
+.lobby-box {
+  border:1px solid rgba(0,245,255,.15);
+  padding:16px 32px; min-width:320px; max-width:480px; width:90vw;
+}
+.lobby-box h3 {
+  font-size:.6rem; letter-spacing:.3em; color:rgba(255,255,255,.2);
+  margin-bottom:12px; text-align:center;
+}
+.player-list { display:flex; flex-direction:column; gap:8px; min-height:40px; }
+.player-item {
+  display:flex; align-items:center; gap:10px;
+  font-family:'Share Tech Mono',monospace; font-size:.85rem;
+  color:rgba(255,255,255,.7); padding:6px 0;
+  border-bottom:1px solid rgba(255,255,255,.05);
+  animation: fadeIn .3s ease;
+}
+@keyframes fadeIn { from{opacity:0;transform:translateY(-6px)} to{opacity:1;transform:none} }
+.player-item:last-child { border-bottom:none; }
+.dot { width:7px; height:7px; border-radius:50%; background:var(--neon); box-shadow:0 0 6px var(--neon); flex-shrink:0; }
+.you-tag { font-size:.6rem; color:var(--neon); letter-spacing:.15em; margin-left:auto; }
+.empty-lobby { color:rgba(255,255,255,.2); font-family:'Share Tech Mono',monospace; font-size:.8rem; text-align:center; }
+
+/* ── Game ── */
+#game-screen { gap:14px; }
+#scoreboard {
+  display:flex; align-items:center; gap:40px;
+}
+.player-score-block { display:flex; flex-direction:column; align-items:center; }
+.p-name { font-size:.6rem; letter-spacing:.2em; color:rgba(255,255,255,.4); margin-bottom:2px; }
+.score-num { font-size:clamp(2.2rem,5vw,3.5rem); font-weight:700; min-width:50px; text-align:center; }
+#s0 { color:var(--neon); text-shadow:var(--glow); }
+#s1 { color:var(--neon2); text-shadow:var(--glow2); }
+#n0 { color:rgba(0,245,255,.7); }
+#n1 { color:rgba(255,0,110,.7); }
+#score-sep { color:rgba(255,255,255,.15); font-size:2.5rem; align-self:center; }
+
+#canvas-wrap {
+  position:relative;
+  border:1px solid rgba(0,245,255,.25);
+  box-shadow:0 0 30px rgba(0,245,255,.08), inset 0 0 60px rgba(0,0,0,.8);
+}
+canvas { display:block; background:var(--court); }
+
+#game-overlay {
+  position:absolute; inset:0;
+  display:flex; flex-direction:column; align-items:center; justify-content:center;
+  background:rgba(2,4,8,.88); gap:16px;
+}
+#game-overlay.hidden { display:none; }
+#go-title { font-size:clamp(1.2rem,3vw,2rem); font-weight:700; letter-spacing:.3em; color:var(--neon); text-shadow:var(--glow); text-align:center; padding:0 20px; }
+#go-sub   { font-family:'Share Tech Mono',monospace; font-size:.85rem; color:rgba(255,255,255,.4); letter-spacing:.15em; text-align:center; line-height:2; padding:0 30px; }
+
+.my-side-tag {
+  font-family:'Share Tech Mono',monospace; font-size:.7rem;
+  letter-spacing:.2em; color:rgba(255,255,255,.25);
+}
+</style>
+</head>
+<body>
+
+<!-- ── JOIN ── -->
+<div id="join-screen" class="screen">
+  <div class="logo">PONG</div>
+  <div class="sub">MULTIJOUEUR EN LIGNE</div>
+  <div class="input-wrap">
+    <label>TON PRÉNOM</label>
+    <input id="name-input" type="text" maxlength="20" placeholder="Entre ton prénom…" autocomplete="off" spellcheck="false">
+  </div>
+  <button class="btn" id="join-btn">REJOINDRE</button>
+</div>
+
+<!-- ── LOBBY ── -->
+<div id="lobby-screen" class="screen hidden">
+  <div class="logo">PONG</div>
+  <div class="lobby-status">EN ATTENTE D'UN ADVERSAIRE<span class="waiting-anim">…</span></div>
+  <div class="lobby-box">
+    <h3>JOUEURS EN LIGNE</h3>
+    <div class="player-list" id="player-list">
+      <div class="empty-lobby">Aucun joueur pour l'instant</div>
+    </div>
+  </div>
+  <div class="sub" style="font-size:.65rem">Dès qu'un 2ème joueur arrive, la partie commence automatiquement !</div>
+</div>
+
+<!-- ── GAME ── -->
+<div id="game-screen" class="screen hidden">
+  <div id="scoreboard">
+    <div class="player-score-block">
+      <div class="p-name" id="n0">JOUEUR 1</div>
+      <div class="score-num" id="s0">0</div>
+    </div>
+    <div id="score-sep">—</div>
+    <div class="player-score-block">
+      <div class="p-name" id="n1">JOUEUR 2</div>
+      <div class="score-num" id="s1">0</div>
+    </div>
+  </div>
+  <div id="canvas-wrap">
+    <canvas id="c"></canvas>
+    <div id="game-overlay">
+      <div id="go-title">PRÊT ?</div>
+      <div id="go-sub"></div>
+    </div>
+  </div>
+  <div class="my-side-tag" id="my-side-tag"></div>
+</div>
+
+<script>
+// ── Constants (must match server) ──────────────────────────────────────────
+const SW = 900, SH = 560;
+const PAD_W = 12, PAD_H = 100, BALL_R = 8;
+
+// ── Canvas setup ──────────────────────────────────────────────────────────
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+
+function resizeCanvas() {
+  const maxW = Math.min(window.innerWidth - 32, SW);
+  const maxH = Math.min(window.innerHeight - 220, SH);
+  const ratio = SW / SH;
+  let W = maxW, H = maxW / ratio;
+  if (H > maxH) { H = maxH; W = H * ratio; }
+  canvas.width  = Math.floor(W);
+  canvas.height = Math.floor(H);
+  scale = canvas.width / SW;
+}
+let scale = 1;
+resizeCanvas();
+window.addEventListener('resize', resizeCanvas);
+
+// ── State ─────────────────────────────────────────────────────────────────
+let myName = '';
+let mySide = -1;
+let gameState = null;
+let trailPoints = [];
+
+// ── WebSocket ─────────────────────────────────────────────────────────────
+const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+const ws = new WebSocket(`${proto}://${location.host}`);
+
+ws.addEventListener('message', e => {
+  const msg = JSON.parse(e.data);
+
+  if (msg.type === 'lobby') {
+    updateLobbyUI(msg.players);
+  }
+
+  if (msg.type === 'start') {
+    mySide = msg.names[0] === myName ? 0 : 1;
+    document.getElementById('n0').textContent = msg.names[0].toUpperCase();
+    document.getElementById('n1').textContent = msg.names[1].toUpperCase();
+    document.getElementById('s0').textContent = '0';
+    document.getElementById('s1').textContent = '0';
+    document.getElementById('my-side-tag').textContent =
+      `TU JOUES : ${mySide === 0 ? '← GAUCHE  (W/S)' : 'DROITE →  (↑/↓)'}`;
+
+    const goTitle = document.getElementById('go-title');
+    const goSub   = document.getElementById('go-sub');
+    goTitle.textContent = `${msg.names[0]} VS ${msg.names[1]}`;
+    goSub.textContent   = 'La partie commence…';
+    document.getElementById('game-overlay').classList.remove('hidden');
+
+    show('game-screen');
+    setTimeout(() => {
+      document.getElementById('game-overlay').classList.add('hidden');
+      gameLoop();
+    }, 1800);
+  }
+
+  if (msg.type === 'state') {
+    if (gameState) trailPoints.push({ x: msg.ball.x, y: msg.ball.y });
+    if (trailPoints.length > 14) trailPoints.shift();
+    gameState = msg;
+    document.getElementById('s0').textContent = msg.score[0];
+    document.getElementById('s1').textContent = msg.score[1];
+  }
+
+  if (msg.type === 'gameover') {
+    const goTitle = document.getElementById('go-title');
+    const goSub   = document.getElementById('go-sub');
+    goTitle.textContent = `${msg.names[msg.winner].toUpperCase()} GAGNE !`;
+    goSub.innerHTML     = `Score final : ${msg.score[0]} — ${msg.score[1]}<br>Retour au lobby dans 3s…`;
+    document.getElementById('game-overlay').classList.remove('hidden');
+    setTimeout(() => { show('lobby-screen'); gameState = null; trailPoints = []; }, 3200);
+  }
+
+  if (msg.type === 'disconnect') {
+    const goTitle = document.getElementById('go-title');
+    const goSub   = document.getElementById('go-sub');
+    goTitle.textContent = 'ADVERSAIRE DÉCONNECTÉ';
+    goSub.innerHTML     = `${msg.name} a quitté la partie.<br>Retour au lobby…`;
+    document.getElementById('game-overlay').classList.remove('hidden');
+    setTimeout(() => { show('lobby-screen'); gameState = null; trailPoints = []; }, 2500);
+  }
+});
+
+// ── UI helpers ────────────────────────────────────────────────────────────
+function show(id) {
+  ['join-screen','lobby-screen','game-screen'].forEach(s => {
+    document.getElementById(s).classList.toggle('hidden', s !== id);
+  });
+}
+
+function updateLobbyUI(players) {
+  const list = document.getElementById('player-list');
+  if (!players.length) {
+    list.innerHTML = '<div class="empty-lobby">Aucun joueur pour l\'instant</div>';
+    return;
+  }
+  list.innerHTML = players.map(n => `
+    <div class="player-item">
+      <div class="dot"></div>
+      <span>${escHtml(n)}</span>
+      ${n === myName ? '<span class="you-tag">TOI</span>' : ''}
+    </div>`).join('');
+}
+
+function escHtml(s) {
+  return s.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+// ── Join ──────────────────────────────────────────────────────────────────
+document.getElementById('join-btn').addEventListener('click', joinLobby);
+document.getElementById('name-input').addEventListener('keydown', e => { if (e.key === 'Enter') joinLobby(); });
+
+function joinLobby() {
+  const val = document.getElementById('name-input').value.trim();
+  if (!val) { document.getElementById('name-input').focus(); return; }
+  myName = val;
+  ws.send(JSON.stringify({ type: 'join', name: myName }));
+  show('lobby-screen');
+}
+
+// ── Keys ──────────────────────────────────────────────────────────────────
+const keys = {};
+document.addEventListener('keydown', e => {
+  if (['ArrowUp','ArrowDown','w','s','W','S'].includes(e.key)) e.preventDefault();
+  keys[e.key] = true;
+  sendKeys();
+});
+document.addEventListener('keyup', e => {
+  keys[e.key] = false;
+  sendKeys();
+});
+function sendKeys() {
+  if (mySide < 0) return;
+  const up   = mySide === 0 ? (keys['w'] || keys['W']) : keys['ArrowUp'];
+  const down = mySide === 0 ? (keys['s'] || keys['S']) : keys['ArrowDown'];
+  ws.send(JSON.stringify({ type: 'key', keys: { up, down } }));
+}
+
+// ── Render ────────────────────────────────────────────────────────────────
+let rafId;
+function gameLoop() {
+  cancelAnimationFrame(rafId);
+  function frame() {
+    if (gameState) renderGame(gameState);
+    rafId = requestAnimationFrame(frame);
+  }
+  frame();
+}
+
+function s(v) { return v * scale; } // scale server coords → canvas
+
+function renderGame(gs) {
+  const W = canvas.width, H = canvas.height;
+  ctx.clearRect(0, 0, W, H);
+
+  // Ambient glow
+  let gl = ctx.createRadialGradient(0, H/2, 0, 0, H/2, W*.4);
+  gl.addColorStop(0,'rgba(0,245,255,.04)'); gl.addColorStop(1,'transparent');
+  ctx.fillStyle = gl; ctx.fillRect(0,0,W,H);
+  gl = ctx.createRadialGradient(W, H/2, 0, W, H/2, W*.4);
+  gl.addColorStop(0,'rgba(255,0,110,.04)'); gl.addColorStop(1,'transparent');
+  ctx.fillStyle = gl; ctx.fillRect(0,0,W,H);
+
+  // Center line
+  ctx.strokeStyle = 'rgba(0,245,255,.1)'; ctx.lineWidth = 2;
+  ctx.setLineDash([s(28),s(28)]);
+  ctx.beginPath(); ctx.moveTo(W/2,0); ctx.lineTo(W/2,H); ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Trail
+  trailPoints.forEach((pt,i) => {
+    const alpha = (i/trailPoints.length)*.45;
+    const sz = s(BALL_R)*(i/trailPoints.length);
+    ctx.beginPath(); ctx.arc(s(pt.x), s(pt.y), Math.max(1,sz), 0, Math.PI*2);
+    ctx.fillStyle = `rgba(0,245,255,${alpha})`; ctx.fill();
+  });
+
+  // Ball
+  ctx.shadowColor = '#00f5ff'; ctx.shadowBlur = s(24);
+  ctx.beginPath(); ctx.arc(s(gs.ball.x), s(gs.ball.y), s(BALL_R), 0, Math.PI*2);
+  ctx.fillStyle = '#fff'; ctx.fill();
+  ctx.shadowBlur = 0;
+
+  // Pads
+  [[gs.pads[0],'#00f5ff'],[gs.pads[1],'#ff006e']].forEach(([pad,col]) => {
+    ctx.shadowColor = col; ctx.shadowBlur = s(18);
+    ctx.fillStyle = col;
+    ctx.beginPath();
+    ctx.roundRect(s(pad.x), s(pad.y), s(PAD_W), s(PAD_H), 4);
+    ctx.fill();
+    ctx.shadowBlur = 0;
+  });
+}
+</script>
+</body>
+</html>
